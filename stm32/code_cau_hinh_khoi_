@@ -1,0 +1,30 @@
+// Cấu hình GPIO và UART2 cho STM32 Nucleo F401RE
+void System_Init() {
+    // 1. Khởi tạo thư viện HAL
+    HAL_Init();
+
+    // 2. Cấu hình xung Clock (mặc định 16MHz từ HSI hoặc 84MHz)
+    SystemClock_Config();
+
+    // 3. Khởi tạo GPIO cho LED LD2 (PA5) và Button B1 (PC13)
+    __HAL_RCC_GPIOA_CLK_ENABLE();  // Bật clock Port A
+    __HAL_RCC_GPIOC_CLK_ENABLE();  // Bật clock Port C
+
+    GPIO_InitTypeDef GPIO_InitStruct = {0};
+
+    // Cấu hình chân PA5 làm Output (LED)
+    GPIO_InitStruct.Pin = GPIO_PIN_5;
+    GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+    GPIO_InitStruct.Pull = GPIO_NOPULL;
+    GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+    HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+
+    // Cấu hình chân PC13 làm Input (User Button)
+    GPIO_InitStruct.Pin = GPIO_PIN_13;
+    GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+    GPIO_InitStruct.Pull = GPIO_NOPULL; // Nucleo đã có trở kéo ngoài cho nút B1
+    HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
+
+    // 4. Khởi tạo UART2 để gửi log (115200 baud, 8-bit, 1-stop bit)
+    MX_USART2_UART_Init();
+}
