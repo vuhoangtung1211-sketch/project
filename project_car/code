@@ -1,0 +1,166 @@
+/*
+ * Mbed OS 6 - Điều khiển xe RC qua Bluetooth (HC-05/06)
+ * Board: NUCLEO-F411RE
+ * Mạch công suất: L298N (Loại 4 chân IN)
+ * Tối ưu: Dùng EventQueue để xử lý logic bên ngoài ISR.
+ */
+
+#include "mbed.h"
+#include "EventQueue.h"
+#include "Thread.h"
+
+// Bluetooth HC-05/06
+#define BT_TX_PIN PA_9 // D8
+#define BT_RX_PIN PA_10 // D2
+
+// L298N Motor A (Trai)
+#define MOTOR_A_IN1 D5
+#define MOTOR_A_IN2 D6
+
+// L298N Motor B (Phai)
+#define MOTOR_B_IN3 D9
+#define MOTOR_B_IN4 D10
+
+// --- Cấu hình điều khiển ---
+float current_speed = 0.5f; // Tốc độ mặc định khi khởi động là 50%
+
+// --- Khởi tạo đối tượng ---
+
+BufferedSerial bt_serial(BT_TX_PIN, BT_RX_PIN, 9600);
+
+PwmOut motor_a_in1(MOTOR_A_IN1);
+PwmOut motor_a_in2(MOTOR_A_IN2);
+PwmOut motor_b_in3(MOTOR_B_IN3);
+PwmOut motor_b_in4(MOTOR_B_IN4);
+
+DigitalOut led(LED1);
+
+// EventQueue và Thread để xử lý logic
+EventQueue queue(32 * EVENTS_EVENT_SIZE);
+Thread event_thread;
+
+// --- Khai báo hàm ---
+void stop_all_motors();
+void process_command();
+
+// --- Các hàm điều khiển động cơ ---
+
+void stop_all_motors() {
+    motor_a_in1 = 1;
+    motor_a_in2 = 1;
+    motor_b_in3 = 1;
+    motor_b_in4 = 1;
+}
+
+void move_forward_left() {
+    motor_a_in1.write(current_speed);
+    motor_a_in2 = 1;
+}
+
+void move_backward_left() {
+    motor_a_in1 = 1;
+    motor_a_in2.write(current_speed);
+}
+
+void move_forward_right() {
+    motor_b_in3.write(current_speed);
+    motor_b_in4 = 1;
+}
+
+void move_backward_right() {
+    motor_b_in3 = 1;
+    motor_b_in4.write(current_speed);
+}
+
+void stop_motor_left(){
+    motor_a_in1 = 1;
+    motor_a_in2 = 1;
+}
+
+void stop_motor_right(){
+    motor_b_in3 = 1;
+    motor_b_in4 = 1;
+}
+
+// --- HÀM XỬ LÝ (CHẠY TRONG THREAD MỚI) ---
+
+/**
+ * Hàm này chứa logic xử lý lệnh
+ * Nó được EventQueue gọi, chạy trong 'event_thread'
+ */
+void process_command() {
+    char cmd;
+    
+    // Bây giờ gọi .read()
+    if (bt_serial.read(&cmd, 1)) {
+        
+        // Phân tích lệnh
+        switch(cmd) {
+            case 'F': // Forward left
+                move_forward_left();
+                break;
+            case 'B': // Backward left
+                move_backward_left();
+                break;
+            case 'f': // Forward right
+                move_forward_right();
+                break;
+            case 'b': // Backward Right
+                move_backward_right();
+                break;
+            case 'L': // Stop left
+                stop_motor_left();
+                break;
+            case 'R': // Stop Right
+                stop_motor_right();
+                break;
+            
+            case 'S': // Stop (Lệnh dừng chủ động)
+                stop_all_motors();
+                break;
+
+            case '1':
+                current_speed = 0.6f; // 40%
+                break;
+            case '2':
+                current_speed = 0.5f; // 50%
+                break;
+            case '3':
+                current_speed = 0.4f; // 60%
+                break;
+            case '4':
+                current_speed = 0.2f; // 80%
+                break;
+            case '5':
+                current_speed = 0.0f; // 100%
+                break;
+        }
+    }
+}
+
+int main() {
+    // --- Thiết lập ban đầu ---
+    motor_a_in1.period_ms(10);
+    motor_a_in2.period_ms(10);
+    motor_b_in3.period_ms(10);
+    motor_b_in4.period_ms(10);
+    
+    stop_all_motors();
+
+    bt_serial.set_format(8, BufferedSerial::None, 1);
+    
+    // 1. Khởi động Thread để chạy EventQueue
+    event_thread.start(callback(&queue, &EventQueue::dispatch_forever));
+
+    // 2. Cấu hình sigio (ngắt serial)
+    // yêu cầu 'queue' xếp lịch
+    // để chạy hàm 'process_command'
+    bt_serial.sigio(callback([&]() { queue.call(process_command); }));
+
+    printf("--- Bluetooth RC Car Ready ---\n");
+
+    while (true) {
+        led = !led;
+        ThisThread::sleep_for(500ms);
+    }
+}
