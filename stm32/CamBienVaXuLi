@@ -1,0 +1,37 @@
+// Khai báo biến toàn cục quản lý thời gian
+uint32_t last_send_time = 0;
+char msg[100];
+
+void Read_Sensor_And_Act() {
+    // 1. Đọc trạng thái nút nhấn B1 (PC13)
+    // Lưu ý: Nút nhấn trên Nucleo thường là Active Low (Nhấn = 0)
+    if (HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_13) == GPIO_PIN_RESET) {
+        HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_SET); // Bật LED khi nhấn
+    } else {
+        HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_RESET); // Tắt LED khi thả
+    }
+
+    // 2. Gửi dữ liệu UART định kỳ mỗi 2000ms (2 giây) mà không làm treo hệ thống
+    if (HAL_GetTick() - last_send_time >= 2000) {
+        uint8_t btn_status = HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_13);
+        
+        // Tạo chuỗi thông báo
+        sprintf(msg, "System Status: [LED: %s] | [Button: %s]\r\n", 
+                (HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_5) ? "ON" : "OFF"),
+                (btn_status == GPIO_PIN_RESET ? "PRESSED" : "RELEASED"));
+
+        // Gửi qua UART2
+        HAL_UART_Transmit(&huart2, (uint8_t*)msg, strlen(msg), 100);
+
+        // Cập nhật mốc thời gian cuối cùng
+        last_send_time = HAL_GetTick();
+    }
+}
+
+// Vòng lặp chính trong main.c
+int main(void) {
+    System_Init();
+    while (1) {
+        Read_Sensor_And_Act();
+    }
+}
